@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import Navbar from './components/Navbar';
 import TripForm from './components/TripForm';
@@ -355,17 +356,6 @@ function App() {
     }
   };
   
-  // This function is now only used for the local email/password auth
-  const handleAuthSuccess = (user: User) => {
-    setCurrentUser(user);
-    setIsAuthenticated(true);
-    const savedPrefs = localStorage.getItem(`userPrefs_${user.email}`);
-    if (savedPrefs) {
-        setUserPreferences(JSON.parse(savedPrefs));
-    }
-    navigateTo('hero');
-  };
-
   const handleLogout = async () => {
     try {
         await logout();
@@ -498,6 +488,7 @@ function App() {
                     isOpen={isShareModalOpen}
                     onClose={() => setIsShareModalOpen(false)}
                     itinerary={itinerary}
+                    // FIX: Pass 'tripDetails' from state to the 'details' prop. The 'details' variable was not defined in this scope.
                     details={tripDetails}
                 />
               )}
@@ -515,7 +506,7 @@ function App() {
           </div>
         );
       case 'login':
-        return <AuthPage onAuthSuccess={handleAuthSuccess} onBack={handleBack} canGoBack={canGoBack} initialView={authView} />;
+        return <AuthPage onBack={handleBack} canGoBack={canGoBack} initialView={authView} />;
       case 'profile':
         if (currentUser) {
           return <UserProfilePage 

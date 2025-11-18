@@ -1,20 +1,20 @@
 import React, { useState } from 'react';
 import { UserIcon, LockIcon, ArrowRightIcon, ArrowLeftIcon, GoogleIcon } from './icons';
-import { signInWithGoogle, isFirebaseConfigured } from '../services/firebase';
+import { signInWithGoogle, isFirebaseConfigured, signInWithEmail, signUpWithEmail, forgotPassword } from '../services/firebase';
 
 interface AuthPageProps {
-  onAuthSuccess: (user: { email: string }) => void;
   onBack: () => void;
   canGoBack: boolean;
   initialView?: 'login' | 'signup';
 }
 
-const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess, onBack, canGoBack, initialView }) => {
+const AuthPage: React.FC<AuthPageProps> = ({ onBack, canGoBack, initialView }) => {
   const [isLoginView, setIsLoginView] = useState(initialView !== 'signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState<{ [key: string]: string | null }>({});
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
   const FirebaseWarning = () => (
     <div className="bg-orange-100 dark:bg-orange-900/50 border-l-4 border-orange-500 text-orange-700 dark:text-orange-300 p-4 rounded-r-lg" role="alert">
@@ -40,8 +40,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess, onBack, canGoBack, i
 
     if (!password) {
         newErrors.password = "Password is required.";
-    } else if (password.length < 8) {
-      newErrors.password = "Password must be at least 8 characters long.";
+    } else if (password.length < 6) { // Firebase requires at least 6 characters
+      newErrors.password = "Password must be at least 6 characters long.";
     }
 
     if (!isLoginView) {
@@ -75,38 +75,65 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess, onBack, canGoBack, i
     }
   };
 
-  const handleForgotPassword = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleForgotPassword = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    alert("In a real application, this would send a password reset link to your email.");
+    setSuccessMessage(null);
+    setErrors({});
+    if (!email) {
+      setErrors({ email: "Please enter your email to reset your password." });
+      return;
+    }
+    try {
+      await forgotPassword(email);
+      setSuccessMessage("Password reset link sent! Please check your email inbox.");
+    } catch (error: any) {
+      console.error("Forgot Password Error:", error);
+      if (error.code === 'auth/user-not-found') {
+        setErrors({ email: "No account found with this email address." });
+      } else {
+        setErrors({ form: "Failed to send password reset email. Please try again." });
+      }
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSuccessMessage(null);
     if (!validate()) {
       return;
     }
 
     try {
       if (isLoginView) {
-        const users = JSON.parse(localStorage.getItem('users') || '[]');
-        const user = users.find((u: any) => u.email === email && u.password === password);
-        if (user) {
-          onAuthSuccess({ email });
-        } else {
-          setErrors({ form: 'Invalid email or password.' });
-        }
+        await signInWithEmail(email, password);
+        // onAuthStateChanged in App.tsx will handle successful login and navigation
       } else {
-        const users = JSON.parse(localStorage.getItem('users') || '[]');
-        if (users.some((u: any) => u.email === email)) {
-          setErrors({ email: 'An account with this email already exists.' });
-          return;
-        }
-        users.push({ email, password });
-        localStorage.setItem('users', JSON.stringify(users));
-        onAuthSuccess({ email });
+        await signUpWithEmail(email, password);
+        // onAuthStateChanged in App.tsx will handle successful signup and navigation
       }
-    } catch (e) {
-      setErrors({ form: "An unexpected error occurred. Please try again." });
+    } catch (error: any) {
+      console.error("Auth Error:", error.code, error.message);
+      let errorMessage = "An unexpected error occurred. Please try again.";
+      switch (error.code) {
+          case 'auth/user-not-found':
+          case 'auth/wrong-password':
+          case 'auth/invalid-credential':
+              errorMessage = 'Invalid email or password.';
+              break;
+          case 'auth/email-already-in-use':
+              errorMessage = 'An account with this email already exists. Please login or use a different email.';
+              break;
+          case 'auth/invalid-email':
+              errorMessage = 'The email address is not valid.';
+              break;
+          case 'auth/weak-password':
+              errorMessage = 'The password is too weak. Please use at least 6 characters.';
+              break;
+          case 'auth/too-many-requests':
+              errorMessage = 'Access to this account has been temporarily disabled due to many failed login attempts. You can immediately restore it by resetting your password or you can try again later.';
+              break;
+      }
+      setErrors({ form: errorMessage });
     }
   };
   
@@ -209,6 +236,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess, onBack, canGoBack, i
             </div>
           )}
           {errors.form && <p className="text-red-500 text-sm text-center">{errors.form}</p>}
+          {successMessage && <p className="text-green-600 dark:text-green-400 text-sm text-center">{successMessage}</p>}
           <button
             type="submit"
             disabled={!isFirebaseConfigured}
@@ -225,6 +253,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess, onBack, canGoBack, i
             onClick={() => {
                 setIsLoginView(!isLoginView);
                 setErrors({});
+                setSuccessMessage(null);
             }}
             className="font-semibold text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 dark:hover:text-cyan-500 focus:outline-none focus-visible:underline"
           >
